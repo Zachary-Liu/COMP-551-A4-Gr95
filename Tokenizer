@@ -1,0 +1,235 @@
+{
+  "nbformat": 4,
+  "nbformat_minor": 0,
+  "metadata": {
+    "colab": {
+      "provenance": [],
+      "toc_visible": true,
+      "authorship_tag": "ABX9TyPUxWB+wVCoIDJR7DaGKVYA",
+      "include_colab_link": true
+    },
+    "kernelspec": {
+      "name": "python3",
+      "display_name": "Python 3"
+    },
+    "language_info": {
+      "name": "python"
+    }
+  },
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "view-in-github",
+        "colab_type": "text"
+      },
+      "source": [
+        "<a href=\"https://colab.research.google.com/github/Zachary-Liu/COMP-551-A4-Gr95/blob/main/Tokenizer\" target=\"_parent\"><img src=\"https://colab.research.google.com/assets/colab-badge.svg\" alt=\"Open In Colab\"/></a>"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "# Download Data"
+      ],
+      "metadata": {
+        "id": "Qo5Vbi1Bbi28"
+      }
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "Ia3yv5lXbdgO",
+        "outputId": "d41301f8-b5b6-45be-9229-6998666830d6"
+      },
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "Using Colab cache for faster access to the 'ag-news-classification-dataset' dataset.\n",
+            "Path to dataset files: /kaggle/input/ag-news-classification-dataset\n"
+          ]
+        }
+      ],
+      "source": [
+        "import kagglehub\n",
+        "\n",
+        "# Download latest version\n",
+        "path = kagglehub.dataset_download(\"amananandrai/ag-news-classification-dataset\")\n",
+        "\n",
+        "print(\"Path to dataset files:\", path)\n"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "import os\n",
+        "import subprocess\n",
+        "import pandas as pd\n",
+        "import numpy as np\n",
+        "import torch\n",
+        "import torch.nn as nn\n",
+        "from sklearn.model_selection import train_test_split\n",
+        "from sklearn.linear_model import LogisticRegression\n",
+        "from sklearn.metrics import accuracy_score\n",
+        "import warnings\n",
+        "import torch.optim as optim\n",
+        "from torch.utils.data import DataLoader, TensorDataset, random_split\n",
+        "import re\n",
+        "np.random.default_rng(RANDOM_SEED = 2026)\n"
+      ],
+      "metadata": {
+        "id": "vCqfeacccFcD"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "#Recommended access: Hugging Face datasets (ag_news). The dataset provides the fields text and label.\n",
+        "#Here, \"Title\" refers to \"text\", and \"Class Index\" to Label\n",
+        "#0 = World, 1 = Sports, 2 = Business, 3 = Sci/Tech\n",
+        "\n",
+        "\n",
+        "train = pd.read_csv(\"/kaggle/input/ag-news-classification-dataset/train.csv\")\n",
+        "test = pd.read_csv(\"/kaggle/input/ag-news-classification-dataset/test.csv\")"
+      ],
+      "metadata": {
+        "id": "C36Soio5bgde"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [],
+      "metadata": {
+        "id": "EGrxW7vRgYsQ"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "# LSTM Classifier Trained From Scratch"
+      ],
+      "metadata": {
+        "id": "oIxpROrMgZDF"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "#Train-Test Split\n",
+        "train_model = train.copy()\n",
+        "train_model['trainval'] = np.random.rand(len(train_model))\n",
+        "train_set = train_model[train_model['trainval'] >= 0.1]\n",
+        "val_set = train_model[train_model['trainval'] < 0.9]\n",
+        "\n",
+        "class Tokenizer:\n",
+        "  def __init__(self, max_length = 128):\n",
+        "    self.word2id = {}\n",
+        "    self.id2word = {}\n",
+        "    self.seen = set()\n",
+        "    self.max_length = max_length\n",
+        "\n",
+        "  def fit(self, texts):\n",
+        "    vocab = set()\n",
+        "    vocab.add('<unk>')\n",
+        "    vocab.add('<pad>')\n",
+        "    vocab.add('<sos>')\n",
+        "    vocab.add('<eos>')\n",
+        "    for text in texts:\n",
+        "      text.lower()\n",
+        "      text = re.sub(r'[^\\w\\s]', '', text)\n",
+        "\n",
+        "      for word in text.split():\n",
+        "        if word in self.seen:\n",
+        "          vocab.add(word)\n",
+        "\n",
+        "        else:\n",
+        "          self.seen.add(word)\n",
+        "\n",
+        "    for index, word in enumerate(vocab):\n",
+        "      self.word2id[word] = index\n",
+        "      self.id2word[index] = word\n",
+        "\n",
+        "  def encode(self, text):\n",
+        "    text = text.lower()\n",
+        "    text = re.sub(r'[^\\w\\s]', '', text)\n",
+        "    encoded = []\n",
+        "    encoded.append(self.word2id['<sos>'])\n",
+        "    index = 0\n",
+        "    for word in text.split():\n",
+        "      if index == self.max_length-1:\n",
+        "        encoded.append(self.word2id['<eos>'])\n",
+        "        return encoded #This truncates the sentence\n",
+        "      index += 1\n",
+        "      try:\n",
+        "        encoded.append(self.word2id[word])\n",
+        "      except:\n",
+        "        word = '<unk>'\n",
+        "        encoded.append(self.word2id[word])\n",
+        "\n",
+        "    encoded.append(self.word2id['<eos>'])\n",
+        "    if index < self.max_length-1:\n",
+        "      for i in range(index, self.max_length-1):\n",
+        "        encoded.append(self.word2id['<pad>'])\n",
+        "\n",
+        "    return encoded\n",
+        "\n",
+        "  def decode(self, ids):\n",
+        "    decoded = []\n",
+        "    for index in encoded:\n",
+        "      try:\n",
+        "        decoded.append(self.id2word[index])\n",
+        "      except:\n",
+        "        decoded.append('<unk>')\n",
+        "\n",
+        "    sequence = \" \".join(decoded)\n",
+        "    return sequence\n",
+        "\n",
+        "\n"
+      ],
+      "metadata": {
+        "id": "fdFhyqh0b0e3"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "Tokenizer"
+      ],
+      "metadata": {
+        "id": "-SfZDCEEhKls"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [],
+      "metadata": {
+        "id": "HNj8--HmhJnT"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [],
+      "metadata": {
+        "id": "87F77J7meRRi"
+      },
+      "execution_count": null,
+      "outputs": []
+    }
+  ]
+}
